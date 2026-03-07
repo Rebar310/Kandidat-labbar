@@ -1,0 +1,68 @@
+name: CMake
+
+on:
+  push:
+    branches: ['main', 'revision/lab2_2023'] 
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            preset: msvc
+          - os: macos-latest
+            preset: xcode
+          - os: ubuntu-latest
+            preset: ninja
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Clone VCPKG
+      uses: actions/checkout@v3
+      with:
+        repository: 'microsoft/vcpkg'
+        fetch-depth: 0
+        path: 'vcpkg'
+        
+    - name: Linux system libs
+      shell: bash
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt install --fix-missing ninja-build libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev pkg-config
+    
+    - name: Mac system libs
+      shell: bash
+      if: runner.os == 'macOS'
+      run: |
+        brew install ninja 
+    
+    - name: Clone repo
+      uses: actions/checkout@v3
+      with: 
+        path: 'particlesystem'
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake -S particlesystem --preset ${{ matrix.preset }} -DCMAKE_BUILD_TYPE=Debug
+
+    - name: Save Logs
+      uses: actions/upload-artifact@v3
+      if: ${{ failure() }}
+      with:
+        name: logs
+        retention-days: 5
+        path: |
+          vcpkg/buildtrees/**/*.log
+          vcpkg/buildtrees/**/*.txt
+
+    - name: Build
+      run: cmake --build build --config Debug
+
+    - name: Test
+      run: ctest --test-dir build --verbose -C Debug
